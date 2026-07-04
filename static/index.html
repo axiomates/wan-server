@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wan2.2-I2V Video Server</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0f1117; color: #e1e4e8; min-height: 100vh;
+    overflow-x: hidden;
+  }
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 24px; background: #161b22; border-bottom: 1px solid #30363d;
+  }
+  .topbar h1 { font-size: 18px; font-weight: 600; }
+  .status { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dot.green { background: #3fb950; }
+  .dot.red { background: #f85149; }
+  .dot.yellow { background: #d2991d; }
+
+  .container { display: grid; grid-template-columns: 380px 1fr; gap: 24px; padding: 24px; max-width: 1400px; margin: 0 auto; }
+
+  .card {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px;
+  }
+  .card h2 { font-size: 15px; font-weight: 600; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid #21262d; }
+
+  .form-group { margin-bottom: 14px; }
+  .form-group label { display: block; font-size: 12px; color: #8b949e; margin-bottom: 4px; }
+  .form-group input, .form-group textarea, .form-group select {
+    width: 100%; padding: 8px 12px; background: #0d1117; border: 1px solid #30363d;
+    border-radius: 6px; color: #e1e4e8; font-size: 13px; outline: none;
+  }
+  .form-group input:focus, .form-group textarea:focus {
+    border-color: #58a6ff; box-shadow: 0 0 0 2px rgba(88,166,255,0.15);
+  }
+  .form-group textarea { min-height: 60px; resize: vertical; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+  .img-slot { display: flex; flex-direction: column; gap: 6px; }
+  .img-slot-label { font-size: 11px; color: #8b949e; }
+  .img-drop {
+    border: 1px dashed #30363d; border-radius: 6px; padding: 16px 8px;
+    text-align: center; font-size: 12px; color: #8b949e; cursor: pointer;
+    background: #0d1117; transition: border-color 0.15s;
+  }
+  .img-drop:hover { border-color: #58a6ff; color: #58a6ff; }
+  .img-drop.required { border-color: #3b6b3f; }
+  .img-preview { width: 100%; border-radius: 6px; border: 1px solid #30363d; display: block; }
+  .img-clear {
+    background: #30363d; color: #8b949e; border: none; border-radius: 6px;
+    font-size: 11px; padding: 4px 8px; cursor: pointer; align-self: flex-start;
+  }
+  .img-clear:hover { background: #da3633; color: #fff; }
+
+  .btn {
+    width: 100%; padding: 10px 16px; border: none; border-radius: 6px;
+    font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity 0.15s;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn-primary { background: #238636; color: #fff; }
+  .btn-primary:disabled { background: #30363d; color: #484f58; cursor: not-allowed; }
+  .btn-danger { background: #da3633; color: #fff; font-size: 12px; padding: 4px 10px; width: auto; }
+  .btn-success { background: #238636; color: #fff; font-size: 12px; padding: 4px 10px; width: auto; }
+
+  .task-list { display: flex; flex-direction: column; gap: 10px; }
+  .task-item {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    padding: 12px 16px; background: #0d1117; border: 1px solid #21262d;
+    border-radius: 6px; font-size: 13px;
+  }
+  .task-info { flex: 1; min-width: 0; }
+  .task-prompt { color: #e1e4e8; overflow-wrap: anywhere; word-break: break-word; }
+  .task-meta { color: #8b949e; font-size: 11px; margin-top: 2px; min-width: 0; overflow-wrap: anywhere; }
+  .task-actions { display: flex; gap: 6px; margin-left: 12px; flex-shrink: 0; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;
+  }
+  .badge-queued { background: #1b3a5c; color: #58a6ff; }
+  .badge-waiting { background: #2b2459; color: #a371f7; }
+  .badge-processing { background: #2e2a0b; color: #d2991d; }
+  .badge-done { background: #16361e; color: #3fb950; }
+  .badge-failed { background: #3b1417; color: #f85149; }
+  .badge-cancelled { background: #21262d; color: #8b949e; }
+
+  .empty { text-align: center; color: #484f58; padding: 40px 0; font-size: 14px; }
+
+  .progress-bar {
+    height: 3px; background: #21262d; border-radius: 2px; margin-top: 8px; overflow: hidden;
+  }
+  .progress-fill { height: 100%; background: #d2991d; border-radius: 2px; transition: width 0.3s ease; }
+  .progress-fill.anim {
+    width: 30% !important;
+    animation: progress-slide 1.5s ease-in-out infinite;
+  }
+  /* 收尾阶段（decode，无步数信号）：进度条停在 90% 附近做呼吸提示 */
+  .progress-fill.finalizing {
+    width: 90%;
+    animation: progress-pulse 1.2s ease-in-out infinite;
+  }
+  @keyframes progress-slide {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(400%); }
+  }
+  @keyframes progress-pulse {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+  }
+  .task-step { color: #8b949e; font-size: 11px; margin-left: 4px; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <h1>Wan2.2-I2V Video Server</h1>
+  <div class="status">
+    <span class="dot" id="health-dot"></span>
+    <span id="health-text">Checking...</span>
+  </div>
+</div>
+
+<div class="container">
+  <!-- Left: Generation Form -->
+  <div class="card">
+    <h2>Generate Video</h2>
+    <form id="gen-form">
+      <div class="form-group">
+        <label>条件图（首帧必填）</label>
+        <div class="form-row">
+          <div class="img-slot">
+            <div class="img-slot-label">首帧 · 起点（必填）</div>
+            <input id="img-first" type="file" accept="image/*" hidden>
+            <div class="img-drop required" id="img-first-drop" onclick="document.getElementById('img-first').click()">
+              <span>点击选择首帧</span>
+            </div>
+            <img class="img-preview" id="img-first-preview" hidden>
+            <button type="button" class="img-clear" id="img-first-clear" hidden onclick="clearImage('first')">✕ 清除</button>
+          </div>
+          <div class="img-slot">
+            <div class="img-slot-label">尾帧 · 终点（可选）</div>
+            <input id="img-last" type="file" accept="image/*" hidden>
+            <div class="img-drop" id="img-last-drop" onclick="document.getElementById('img-last').click()">
+              <span>点击选择尾帧</span>
+            </div>
+            <img class="img-preview" id="img-last-preview" hidden>
+            <button type="button" class="img-clear" id="img-last-clear" hidden onclick="clearImage('last')">✕ 清除</button>
+          </div>
+        </div>
+        <div style="font-size:11px;color:#8b949e;margin-top:4px">只给首帧=图生视频；首+尾=从起点过渡到终点（FLF2V）。Wan2.2 为图生视频模型，首帧必填。</div>
+      </div>
+      <div class="form-group">
+        <label>Prompt（中英文均可）</label>
+        <textarea id="prompt" placeholder="镜头缓慢推进，阳光洒在街道上，电影质感"></textarea>
+      </div>
+      <div class="form-group">
+        <label>Negative Prompt（留空用官方默认）</label>
+        <input id="neg-prompt" placeholder="色调艳丽，过曝，静态，细节模糊不清…">
+      </div>
+      <div class="form-group">
+        <label>Resolution</label>
+        <select id="resolution">
+          <optgroup label="480P（快）">
+            <option data-w="832" data-h="480" selected>832 × 480 · 16:9</option>
+            <option data-w="480" data-h="832">480 × 832 · 9:16</option>
+            <option data-w="624" data-h="624">624 × 624 · 1:1</option>
+          </optgroup>
+          <optgroup label="720P（慢，更清晰）">
+            <option data-w="1280" data-h="720">1280 × 720 · 16:9</option>
+            <option data-w="720" data-h="1280">720 × 1280 · 9:16</option>
+            <option data-w="960" data-h="960">960 × 960 · 1:1</option>
+          </optgroup>
+        </select>
+        <div style="font-size:11px;color:#8b949e;margin-top:4px">Wan2.2 官方训练分辨率为 480P / 720P。全部已对齐到 16 像素。720P 明显更慢。</div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Duration (时长)</label>
+          <select id="duration">
+            <option data-sec="2">2 秒</option>
+            <option data-sec="3">3 秒</option>
+            <option data-sec="5" selected>5 秒 · 推荐</option>
+            <option data-sec="8">8 秒</option>
+            <option data-sec="10">10 秒</option>
+            <option data-sec="15">15 秒</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>FPS (帧率)</label>
+          <select id="fps">
+            <option value="16" selected>16 · 官方默认</option>
+            <option value="24">24 · 电影</option>
+            <option value="30">30 · 标准</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group" style="margin-top:-6px">
+        <div style="font-size:11px;color:#8b949e" id="frames-hint">≈ 81 帧</div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Quality (质量档)</label>
+          <select id="steps">
+            <option value="20">草稿 · 20 步</option>
+            <option value="30">标准 · 30 步</option>
+            <option value="40" selected>精细 · 40 步（官方默认）</option>
+            <option value="50">高 · 50 步</option>
+            <option value="60">很高 · 60 步</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Seed (-1 for random)</label>
+          <input id="seed" type="number" value="-1">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Guidance Scale</label>
+          <input id="guidance" type="number" value="3.5" min="1" max="20" step="0.5">
+        </div>
+        <div class="form-group" style="display:flex;align-items:flex-end">
+          <button type="submit" class="btn btn-primary" id="submit-btn">Generate</button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <!-- Right: Task List -->
+  <div>
+    <div class="card" style="margin-bottom:24px">
+      <h2>Queue &amp; Tasks</h2>
+      <div class="task-list" id="task-list">
+        <div class="empty">No tasks yet</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+
+async function checkHealth() {
+  try {
+    const r = await fetch(`${API}/health`);
+    const d = await r.json();
+    const dot = document.getElementById('health-dot');
+    const text = document.getElementById('health-text');
+    if (d.status === 'ok' && d.model_loaded) {
+      dot.className = 'dot green';
+      text.textContent = `GPU Ready | Processing: ${d.processing} | Waiting: ${d.waiting} | Queue: ${d.queue_size}/${d.queue_max}`;
+    } else if (d.status === 'ok') {
+      dot.className = 'dot yellow';
+      text.textContent = 'Model loading...';
+    } else {
+      dot.className = 'dot red';
+      text.textContent = 'Down';
+    }
+  } catch(e) {
+    document.getElementById('health-dot').className = 'dot red';
+    document.getElementById('health-text').textContent = 'Cannot reach server';
+  }
+}
+
+const TASK_STORAGE_KEY = 'wan.taskIds';
+let storedTaskIds = [];
+try {
+  storedTaskIds = JSON.parse(localStorage.getItem(TASK_STORAGE_KEY) || '[]');
+} catch {
+  localStorage.removeItem(TASK_STORAGE_KEY);
+}
+const taskIds = new Set(storedTaskIds);
+const TASK_MAX = 200;
+const TASK_TTL_MS = 86_400_000; // 完成/失败/取消的任务 24 小时后从列表清除
+
+function saveTaskIds() {
+  localStorage.setItem(TASK_STORAGE_KEY, JSON.stringify([...taskIds]));
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>'"]/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+  }[ch]));
+}
+
+function renderTasks(activeTasks) {
+  const container = document.getElementById('task-list');
+  if (activeTasks.length === 0) {
+    container.innerHTML = '<div class="empty">No tasks yet</div>';
+    return;
+  }
+  const now = Date.now() / 1000;
+  container.innerHTML = activeTasks.map(t => {
+    const id = escapeHtml(t.id);
+    const status = escapeHtml(t.status);
+    const badgeClass = `badge-${status}`;
+
+    // 生成时间
+    const created = new Date((t.created_at || 0) * 1000);
+    const timeStr = escapeHtml(created.toLocaleTimeString());
+
+    // 尺寸信息
+    const res = t.params ? `${escapeHtml(t.params.width || '?')}×${escapeHtml(t.params.height || '?')}` : '';
+    const prompt = escapeHtml(t.params?.prompt || '(no prompt)');
+    const flf = t.params?.has_last_frame ? ' 🎬FLF' : (t.params?.has_first_frame ? ' 🖼I2V' : '');
+
+    let icon = '';
+    if (status === 'queued') icon = '⏳';
+    else if (status === 'waiting') icon = '🕓';
+    else if (status === 'processing') icon = '🔄';
+    else if (status === 'done') icon = '✅';
+    else if (status === 'failed') icon = '❌';
+    else if (status === 'cancelled') icon = '🚫';
+
+    let actions = '';
+    if (status === 'queued' || status === 'waiting') {
+      actions = `<button class="btn btn-danger" onclick="cancelTask('${id}')">✕ Cancel</button>`;
+    } else if (status === 'done') {
+      actions = `<button class="btn btn-success" onclick="downloadTask('${id}')">⬇ Download</button>`;
+    } else if (status === 'failed' || status === 'cancelled') {
+      actions = `<button class="btn btn-danger" style="background:#30363d;color:#8b949e" onclick="removeTask('${id}')">✕ Dismiss</button>`;
+    }
+
+    // 进度条（processing 时）
+    let progress = '';
+    let stepLabel = '';
+    if (status === 'processing') {
+      const cur = t.current_step || 0;
+      const total = t.total_steps || 0;
+      if (total > 0 && cur >= total) {
+        // 扩散步数已完成，正在 decode 视频（无细粒度信号）
+        progress = `<div class="progress-bar"><div class="progress-fill finalizing"></div></div>`;
+        stepLabel = `<span class="task-step">finalizing…</span>`;
+      } else if (total > 0) {
+        // 真实步数进度，映射到 0~90%，留 10% 给收尾
+        const pct = Math.round((cur / total) * 90);
+        progress = `<div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>`;
+        stepLabel = `<span class="task-step">step ${cur}/${total}</span>`;
+      } else {
+        // 尚未收到步数信号
+        progress = `<div class="progress-bar"><div class="progress-fill anim"></div></div>`;
+      }
+    }
+
+    // 耗时
+    let elapsed = '';
+    if (t.started_at) {
+      const end = t.finished_at || now;
+      const secs = Math.round(end - t.started_at);
+      if (secs > 0) elapsed = ` | ${secs}s`;
+    }
+
+    return `
+      <div class="task-item">
+        <div class="task-info">
+          <div class="task-prompt">${icon} ${prompt}</div>
+          <div class="task-meta">
+            <span class="badge ${badgeClass}">${status}</span>
+            ${res ? ` ${res}` : ''}${escapeHtml(flf)}
+            ${escapeHtml(elapsed)}
+            ${t.queue_position != null ? ` | pos #${escapeHtml(t.queue_position)}` : ''}
+            ${stepLabel}
+            <span style="color:#484f58">· ${timeStr}</span>
+          </div>
+          ${progress}
+        </div>
+        <div class="task-actions">${actions}</div>
+      </div>`;
+  }).join('');
+}
+
+async function refreshTasks() {
+  const now = Date.now() / 1000;
+
+  // 一次性拉取服务端内存里的所有任务，再用本地 taskIds 过滤，
+  // 避免对每个 id 单独轮询（N+1 → 1 个请求）。
+  let serverTasks;
+  try {
+    const r = await fetch(`${API}/v1/video/tasks`);
+    if (!r.ok) return;
+    serverTasks = await r.json();
+  } catch {
+    return;
+  }
+
+  const byId = new Map(serverTasks.map(t => [t.id, t]));
+  let changed = false;
+
+  // 本地记录的 id 若服务端已不存在（TTL 清理过），从本地移除
+  for (const id of [...taskIds]) {
+    if (!byId.has(id)) {
+      taskIds.delete(id);
+      changed = true;
+    }
+  }
+
+  // 清理已到期的终态任务
+  const finalStates = new Set(['done', 'failed', 'cancelled']);
+  for (const t of serverTasks) {
+    if (!taskIds.has(t.id)) continue;
+    if (finalStates.has(t.status) && t.finished_at && (now - t.finished_at > TASK_TTL_MS / 1000)) {
+      taskIds.delete(t.id);
+      changed = true;
+    }
+  }
+
+  // 限制数量
+  if (taskIds.size > TASK_MAX) {
+    const toRemove = [...taskIds].slice(0, taskIds.size - TASK_MAX);
+    toRemove.forEach(id => taskIds.delete(id));
+    changed = true;
+  }
+  if (changed) saveTaskIds();
+
+  const visible = serverTasks
+    .filter(t => taskIds.has(t.id))
+    .sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+  renderTasks(visible);
+}
+
+function removeTask(id) {
+  taskIds.delete(id);
+  saveTaskIds();
+  refreshTasks();
+}
+
+async function loadServerTasks() {
+  try {
+    const r = await fetch(`${API}/v1/video/tasks`);
+    if (!r.ok) return;
+    const serverTasks = await r.json();
+    for (const t of serverTasks) taskIds.add(t.id);
+    saveTaskIds();
+  } catch {
+    // Ignore; refreshTasks will keep trying.
+  }
+}
+
+document.getElementById('gen-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById('submit-btn');
+
+  const resOpt = document.getElementById('resolution').selectedOptions[0];
+  const fps = parseInt(document.getElementById('fps').value);
+  const durSec = parseFloat(document.getElementById('duration').selectedOptions[0].dataset.sec);
+
+  const prompt = document.getElementById('prompt').value.trim();
+  if (!prompt) { alert('Prompt required'); return; }
+
+  // Wan I2V 首帧必填；尾帧可选但需搭配首帧。
+  if (!imageData.first) { alert('请先选择首帧（Wan2.2 为图生视频模型，首帧必填）'); return; }
+  if (imageData.last && !imageData.first) {
+    alert('选择尾帧前需先选择首帧'); return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+
+  const body = {
+    prompt: prompt,
+    negative_prompt: document.getElementById('neg-prompt').value.trim() || undefined,
+    width: parseInt(resOpt.dataset.w),
+    height: parseInt(resOpt.dataset.h),
+    num_frames: framesFor(durSec, fps),
+    num_inference_steps: parseInt(document.getElementById('steps').value),
+    guidance_scale: parseFloat(document.getElementById('guidance').value),
+    seed: parseInt(document.getElementById('seed').value),
+    fps: fps,
+    image_first: imageData.first,
+  };
+  if (imageData.last) body.image_last = imageData.last;
+
+  try {
+    const r = await fetch(`${API}/v1/video/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (r.ok) {
+      taskIds.add(d.task_id);
+      saveTaskIds();
+      refreshTasks();
+    } else {
+      alert(`Error ${r.status}: ${d.detail || 'Unknown'}`);
+    }
+  } catch(err) {
+    alert('Request failed: ' + err.message);
+  }
+  btn.disabled = false;
+  btn.textContent = 'Generate';
+});
+
+async function cancelTask(id) {
+  const r = await fetch(`${API}/v1/video/cancel/${id}`, { method: 'POST' });
+  if (!r.ok) { const d = await r.json(); alert(d.detail || 'Cancel failed'); }
+  refreshTasks();
+}
+
+function downloadTask(id) {
+  window.open(`${API}/v1/video/result/${id}`, '_blank');
+}
+
+// ---- 条件图（首/尾帧）上传与预览 ----
+const imageData = { first: null, last: null };  // 存 base64 data URL
+
+function bindImageSlot(slot) {
+  const input = document.getElementById(`img-${slot}`);
+  input.addEventListener('change', () => {
+    const file = input.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      imageData[slot] = reader.result;  // data:image/...;base64,xxxx
+      const preview = document.getElementById(`img-${slot}-preview`);
+      preview.src = reader.result;
+      preview.hidden = false;
+      document.getElementById(`img-${slot}-drop`).hidden = true;
+      document.getElementById(`img-${slot}-clear`).hidden = false;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function clearImage(slot) {
+  imageData[slot] = null;
+  document.getElementById(`img-${slot}`).value = '';
+  const preview = document.getElementById(`img-${slot}-preview`);
+  preview.hidden = true;
+  preview.removeAttribute('src');
+  document.getElementById(`img-${slot}-drop`).hidden = false;
+  document.getElementById(`img-${slot}-clear`).hidden = true;
+}
+
+// 时长(秒) × fps 换算成合法帧数：Wan2.2 要求 num_frames 满足 4k+1，
+// 且服务端限制 5 ~ 241。四舍五入到最近的 4k+1 后再夹到区间内。
+const MAX_FRAMES = 241;
+function framesFor(durSec, fps) {
+  const raw = durSec * fps;
+  let frames = Math.round((raw - 1) / 4) * 4 + 1;
+  if (frames < 5) frames = 5;
+  if (frames > MAX_FRAMES) frames = MAX_FRAMES;
+  return frames;
+}
+
+// 跷跷板联动：时长 × fps 必须 <= MAX_FRAMES 帧。用户最后改动的那个控件保留，
+// 另一个自动跌落到"能容纳"的最大标准档：
+//   改时长 → 若当前 fps 装不下，把 fps 降到能容纳该时长的最大档
+//   改 fps  → 若当前时长装不下，把时长缩到该 fps 能容纳的最大档
+// changed: 'duration' | 'fps'，标识本次是哪个控件被用户改动。
+function seesaw(changed) {
+  const fpsSel = document.getElementById('fps');
+  const durSel = document.getElementById('duration');
+  const fps = parseInt(fpsSel.value);
+  const durSec = parseFloat(durSel.selectedOptions[0].dataset.sec);
+
+  if (durSec * fps <= MAX_FRAMES) {
+    return { adjusted: false };  // 组合本就合法，无需让步
+  }
+
+  if (changed === 'duration') {
+    // 保时长，让 fps 让步：在 fps 档里选能装下该时长的最大值
+    const fpsOpts = [...fpsSel.options].map(o => parseInt(o.value)).sort((a, b) => a - b);
+    const best = fpsOpts.filter(f => durSec * f <= MAX_FRAMES).pop();
+    const applied = best ?? fpsOpts[0];  // 理论上最低档总能装下最短时长
+    fpsSel.value = String(applied);
+    return { adjusted: true, kept: 'duration', field: 'fps', from: fps, to: applied };
+  } else {
+    // 保 fps，让时长让步：在时长档里选该 fps 能装下的最大值
+    let bestIdx = -1;
+    for (const opt of durSel.options) {
+      if (parseFloat(opt.dataset.sec) * fps <= MAX_FRAMES) bestIdx = opt.index;
+    }
+    const from = durSec;
+    durSel.selectedIndex = bestIdx >= 0 ? bestIdx : 0;
+    const applied = parseFloat(durSel.selectedOptions[0].dataset.sec);
+    return { adjusted: true, kept: 'fps', field: 'duration', from, to: applied };
+  }
+}
+
+function updateFramesHint(changed) {
+  const adj = changed ? seesaw(changed) : { adjusted: false };
+  const fps = parseInt(document.getElementById('fps').value);
+  const durSec = parseFloat(document.getElementById('duration').selectedOptions[0].dataset.sec);
+  const frames = framesFor(durSec, fps);
+  const actualSec = (frames / fps).toFixed(1);
+  const hint = document.getElementById('frames-hint');
+  if (adj.adjusted) {
+    const label = adj.field === 'fps'
+      ? `fps ${adj.from}→${adj.to}`
+      : `时长 ${adj.from}s→${adj.to}s`;
+    hint.innerHTML =
+      `<span style="color:#d2991d">⚠ 超出上限 ${MAX_FRAMES} 帧，已自动把 ${label}</span>`
+      + `<br>≈ ${frames} 帧（实际约 ${actualSec}s @ ${fps}fps）`;
+  } else {
+    hint.textContent = `≈ ${frames} 帧（实际约 ${actualSec}s @ ${fps}fps）· 帧数越高越慢`;
+  }
+}
+
+// Init
+document.getElementById('duration').addEventListener('change', () => updateFramesHint('duration'));
+document.getElementById('fps').addEventListener('change', () => updateFramesHint('fps'));
+updateFramesHint();
+bindImageSlot('first');
+bindImageSlot('last');
+checkHealth();
+loadServerTasks().then(refreshTasks);
+setInterval(checkHealth, 5000);
+setInterval(refreshTasks, 2000);
+</script>
+</body>
+</html>

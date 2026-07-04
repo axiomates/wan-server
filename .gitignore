@@ -1,0 +1,36 @@
+# 模型权重（约 80GB，由 prepare_base.py 下载，绝不入库）
+Wan2.2-I2V-A14B-Diffusers/
+*.safetensors
+*.gguf
+*.bin
+*.pth
+*.ckpt
+
+# 生成产物
+outputs/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+ENV/
+
+# 缓存
+.cache/
+*.log
+
+# 编辑器 / 系统
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
