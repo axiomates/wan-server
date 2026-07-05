@@ -71,7 +71,7 @@ wan-server/
 ### 4. 启动
 
 ```bash
-python server.py --model ./Wan2.2-I2V-A14B-Diffusers --port 8080
+python server.py --model ./Wan2.2-I2V-A14B-Diffusers --port 4323
 ```
 
 看到 `Server ready` 就成功了。服务只使用本地目录，目录不存在会直接报错，不会在启动时下载大文件。
