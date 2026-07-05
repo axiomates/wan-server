@@ -180,8 +180,21 @@ def load_pipeline(model_id: str, vae_tiling: bool = False, compile: bool = False
 
 
 def _move_to_cuda(pipe, device):
-    """把整个 pipeline（双专家 + text_encoder + vae）常驻 GPU，处理 OOM"""
+    """把整个 pipeline（双专家 + text_encoder + vae）常驻 GPU，处理 OOM。
+
+    diffusers 的 pipe.to() 是一次性同步搬运，无进度回调；这里改为按组件
+    （vae / text_encoder / transformer / transformer_2）逐个搬运并打印进度，
+    避免大模型搬运几分钟时看起来像卡死。最后再 pipe.to() 兜底 pipeline
+    内部 device 状态（组件已就位，此调用极快）。
+    """
+    components = getattr(pipe, "components", {}) or {}
+    modules = [(n, c) for n, c in components.items() if isinstance(c, torch.nn.Module)]
     try:
+        for i, (name, module) in enumerate(modules, 1):
+            t0 = time.time()
+            logger.info("Moving to %s [%d/%d]: %s ...", device, i, len(modules), name)
+            module.to(device)
+            logger.info("  %s ready in %.1fs", name, time.time() - t0)
         pipe.to(device)
     except torch.cuda.OutOfMemoryError:
         logger.error("CUDA OOM while loading — Wan2.2-I2V-A14B bf16 需约 80GB 权重内存")
